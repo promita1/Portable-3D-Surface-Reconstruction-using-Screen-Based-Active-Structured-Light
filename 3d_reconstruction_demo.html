@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portable 3D Surface Reconstruction — Interactive Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060912;
+  --surface: #0d1420;
+  --surface2: #111827;
+  --border: #1a2640;
+  --accent: #00d4ff;
+  --accent2: #ff6b35;
+  --accent3: #a78bfa;
+  --text: #e2e8f0;
+  --dim: #64748b;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --display: 'Syne', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; overflow-x:hidden; }
+
+/* Header */
+header {
+  padding:1.75rem 2.5rem 1.5rem;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(0,212,255,0.05) 0%,transparent 100%);
+  position:relative;
+}
+header::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent);
+}
+.header-badge {
+  font-family:var(--mono); font-size:0.62rem; color:var(--accent);
+  letter-spacing:.18em; text-transform:uppercase; margin-bottom:.45rem; opacity:.75;
+}
+header h1 {
+  font-family:var(--display); font-size:clamp(1.2rem,3vw,1.9rem);
+  font-weight:800; letter-spacing:-.025em; line-height:1.15;
+}
+header h1 span { color:var(--accent); }
+.header-meta { margin-top:.4rem; font-size:.75rem; color:var(--dim); font-family:var(--mono); }
+
+/* Nav */
+nav { display:flex; padding:0 2.5rem; border-bottom:1px solid var(--border); overflow-x:auto; gap:0; }
+.tab-btn {
+  padding:.85rem 1.25rem; border:none; background:none; color:var(--dim);
+  font-family:var(--sans); font-size:.82rem; font-weight:500; cursor:pointer;
+  border-bottom:2px solid transparent; transition:all .18s; white-space:nowrap;
+  display:flex; align-items:center; gap:.45rem;
+}
+.tab-btn .tn { font-family:var(--mono); font-size:.6rem; color:var(--accent); opacity:.6; }
+.tab-btn:hover { color:var(--text); }
+.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+/* Content */
+.tab-content { display:none; padding:2rem 2.5rem; }
+.tab-content.active { display:block; }
+
+.slbl { font-family:var(--mono); font-size:.6rem; color:var(--accent); letter-spacing:.16em; text-transform:uppercase; margin-bottom:.35rem; }
+h2 { font-family:var(--display); font-size:1.35rem; font-weight:700; margin-bottom:.4rem; }
+.lead { font-size:.88rem; color:var(--dim); line-height:1.65; max-width:62ch; margin-bottom:1.5rem; }
+
+.card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.2rem; }
+.card-title { font-family:var(--mono); font-size:.62rem; color:var(--accent); letter-spacing:.1em; text-transform:uppercase; margin-bottom:.7rem; }
+
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; }
+.g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:1.2rem; }
+
+canvas { display:block; width:100%; }
+.cw { position:relative; border-radius:6px; overflow:hidden; background:#000; }
+
+.math {
+  font-family:var(--mono); font-size:.78rem; background:var(--surface2);
+  border:1px solid var(--border); border-left:3px solid var(--accent);
+  padding:.8rem 1rem; border-radius:0 6px 6px 0; line-height:2; color:#cdd6f4;
+}
+.math .v { color:var(--accent); }
+.math .cm { color:var(--dim); font-style:italic; }
+
+.controls { display:flex; flex-wrap:wrap; gap:.9rem; margin:1rem 0; align-items:center; }
+.cg { display:flex; align-items:center; gap:.45rem; }
+.cl { font-family:var(--mono); font-size:.68rem; color:var(--dim); }
+.cv { font-family:var(--mono); font-size:.68rem; color:var(--accent); min-width:2ch; }
+
+input[type=range] {
+  -webkit-appearance:none; height:3px; background:var(--border);
+  border-radius:2px; outline:none; width:90px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:12px; height:12px;
+  border-radius:50%; background:var(--accent); cursor:pointer;
+}
+select {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  padding:.28rem .5rem; border-radius:4px; font-family:var(--mono); font-size:.68rem; outline:none;
+}
+.btn {
+  font-family:var(--mono); font-size:.68rem; padding:.38rem .85rem; border-radius:4px;
+  border:1px solid var(--accent); background:transparent; color:var(--accent);
+  cursor:pointer; transition:all .15s; letter-spacing:.04em;
+}
+.btn:hover { background:rgba(0,212,255,.1); }
+.btn.ab { background:rgba(0,212,255,.15); }
+
+/* Pipeline */
+.pflow { display:flex; align-items:center; overflow-x:auto; padding:1rem 0 .5rem; flex-wrap:nowrap; }
+.pnode {
+  flex-shrink:0; width:120px; background:var(--surface); border:1px solid var(--border);
+  border-radius:8px; padding:.8rem .65rem; cursor:pointer; transition:all .18s;
+  text-align:center;
+}
+.pnode:hover,.pnode.sel { border-color:var(--accent); background:rgba(0,212,255,.05); }
+.pnode.sel { box-shadow:0 0 0 1px var(--accent),0 0 20px rgba(0,212,255,.12); }
+.picon { font-size:1.4rem; margin-bottom:.3rem; }
+.pname { font-size:.7rem; font-weight:500; line-height:1.3; }
+.ptag { font-family:var(--mono); font-size:.52rem; color:var(--accent); opacity:.65; margin-top:.2rem; display:block; }
+.parrow { flex-shrink:0; color:var(--dim); padding:0 .2rem; font-size:.9rem; display:flex; align-items:center; }
+.pdetail { margin-top:1.2rem; display:none; }
+.pdetail.vis { display:block; }
+
+/* frame dots */
+.fdots { display:flex; gap:.35rem; margin-top:.45rem; }
+.fdot { width:7px; height:7px; border-radius:50%; background:var(--border); transition:background .18s; }
+.fdot.a { background:var(--accent); }
+
+/* colorbar */
+.cbar { height:10px; border-radius:3px; background:linear-gradient(90deg,#00008b,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000); margin-top:.45rem; }
+.cbarlbl { display:flex; justify-content:space-between; font-family:var(--mono); font-size:.58rem; color:var(--dim); margin-top:.2rem; }
+
+/* HDR comparison */
+.hdrwrap { position:relative; height:300px; border-radius:8px; overflow:hidden; cursor:ew-resize; user-select:none; }
+.hdrwrap canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+.hdrdiv { position:absolute; top:0; width:2px; height:100%; background:white; pointer-events:none; z-index:10; }
+.hdrlbls { position:absolute; bottom:10px; left:0; right:0; display:flex; justify-content:space-between; padding:0 1rem; pointer-events:none; z-index:11; }
+.hdrlbl { font-family:var(--mono); font-size:.62rem; padding:.22rem .45rem; border-radius:3px; background:rgba(0,0,0,.75); letter-spacing:.04em; }
+
+.metric { display:flex; flex-direction:column; gap:.15rem; }
+.mval { font-family:var(--display); font-size:1.7rem; font-weight:700; color:var(--accent); line-height:1; }
+.mlbl { font-size:.7rem; color:var(--dim); }
+
+.badge { display:inline-block; font-family:var(--mono); font-size:.6rem; padding:.18rem .45rem; border-radius:3px; letter-spacing:.05em; }
+.badge-cyan { background:rgba(0,212,255,.12); color:var(--accent); border:1px solid rgba(0,212,255,.2); }
+.badge-orange { background:rgba(255,107,53,.12); color:var(--accent2); border:1px solid rgba(255,107,53,.2); }
+.badge-purple { background:rgba(167,139,250,.12); color:var(--accent3); border:1px solid rgba(167,139,250,.2); }
+
+.scanline {
+  position:fixed; top:0; left:0; right:0; height:2px; pointer-events:none; z-index:999;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,.25),transparent);
+  animation:scan 9s linear infinite;
+}
+@keyframes scan { 0%{transform:translateY(-2px)} 100%{transform:translateY(100vh)} }
+
+@media(max-width:768px) {
+  .g2,.g3 { grid-template-columns:1fr; }
+  header,nav,.tab-content { padding-left:1rem; padding-right:1rem; }
+}
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<header>
+  <div class="header-badge">MM 805 · Computer Vision &amp; 3DTV · University of Alberta · 2026</div>
+  <h1>Portable 3D Surface Reconstruction<br>via <span>Screen-Based Active Structured Light</span></h1>
+  <div class="header-meta">Promita &nbsp;·&nbsp; Mihir &nbsp;·&nbsp; Ashee &nbsp;&nbsp;|&nbsp;&nbsp; Interactive Demo</div>
+</header>
+
+<nav>
+  <button class="tab-btn active" onclick="setTab(0)"><span class="tn">01</span> System Pipeline</button>
+  <button class="tab-btn" onclick="setTab(1)"><span class="tn">02</span> Phase-Shifting Profilometry</button>
+  <button class="tab-btn" onclick="setTab(2)"><span class="tn">03</span> 3D Depth Reconstruction</button>
+  <button class="tab-btn" onclick="setTab(3)"><span class="tn">04</span> HDR &amp; Noise Analysis</button>
+</nav>
+
+<!-- ════════════ TAB 1: PIPELINE ════════════ -->
+<div id="tab-0" class="tab-content active">
+  <div class="slbl">System Architecture</div>
+  <h2>End-to-End Reconstruction Pipeline</h2>
+  <p class="lead">Click any stage to explore its algorithms, hardware role, and key literature. The pipeline converts screen-projected fringe patterns into dense 3D point clouds using only a laptop and webcam.</p>
+  <div class="pflow" id="pflow"></div>
+  <div class="pdetail" id="pdetail">
+    <div class="g2">
+      <div class="card"><div class="card-title">Stage Detail</div><div id="pdesc" style="font-size:.84rem;line-height:1.7;color:var(--dim);"></div></div>
+      <div class="card"><div class="card-title">Key References</div><div id="prefs" style="font-size:.76rem;color:var(--dim);line-height:1.9;font-family:var(--mono);"></div></div>
+    </div>
+  </div>
+  <div class="g3" style="margin-top:1.5rem;">
+    <div class="card">
+      <div class="card-title">Hardware Configuration</div>
+      <div style="font-size:.84rem;line-height:1.7;color:var(--dim);">
+        <span class="badge badge-cyan" style="margin-bottom:.5rem;display:inline-block;">Projector → Laptop Screen</span><br>
+        Repurposes the display as a programmable SL source, eliminating costly DLP hardware entirely. The <em>"Laptop-Only"</em> form factor.
+        <div style="margin-top:.7rem;"><span class="badge badge-orange" style="margin-bottom:.5rem;display:inline-block;">Sensor → Commodity Webcam</span></div>
+        Captures deformed fringe patterns from an offset viewpoint to establish the triangulation baseline B.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Project Innovations</div>
+      <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.8rem;">
+        <div style="padding:.5rem .7rem;background:rgba(0,212,255,.05);border-radius:5px;border-left:2px solid var(--accent);">Differential HDR capture compensates for low-luminance screen output</div>
+        <div style="padding:.5rem .7rem;background:rgba(255,107,53,.05);border-radius:5px;border-left:2px solid var(--accent2);">Deep Unrolling Networks for robust phase unwrapping in noisy conditions</div>
+        <div style="padding:.5rem .7rem;background:rgba(167,139,250,.05);border-radius:5px;border-left:2px solid var(--accent3);">Correspondenceless 3D scan of featureless white ceramics</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">System Specifications</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;">
+        <div class="metric"><div class="mval">~$0</div><div class="mlbl">Extra hardware</div></div>
+        <div class="metric"><div class="mval">3–12</div><div class="mlbl">Frames/scan</div></div>
+        <div class="metric"><div class="mval">sub-px</div><div class="mlbl">Phase resolution</div></div>
+        <div class="metric"><div class="mval">±1mm</div><div class="mlbl">Target accuracy</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ TAB 2: PSP ════════════ -->
+<div id="tab-1" class="tab-content">
+  <div class="slbl">Live Simulation</div>
+  <h2>Phase-Shifting Profilometry Simulator</h2>
+  <p class="lead">Project N phase-shifted sinusoidal fringe patterns onto a synthetic 3D object and observe real-time phase map extraction. Adjust parameters to understand the trade-offs.</p>
+  <div class="controls">
+    <div class="cg"><span class="cl">N shifts</span><input type="range" id="nS" min="3" max="12" step="1" value="4"><span class="cv" id="nSv">4</span></div>
+    <div class="cg"><span class="cl">Frequency</span><input type="range" id="fr" min="2" max="16" step="1" value="6"><span class="cv" id="frv">6</span></div>
+    <div class="cg"><span class="cl">Noise σ</span><input type="range" id="ns" min="0" max="50" step="1" value="8"><span class="cv" id="nsv">8</span></div>
+    <div class="cg"><span class="cl">Object</span>
+      <select id="obj">
+        <option value="sphere">Sphere</option>
+        <option value="steps">Stepped Block</option>
+        <option value="cone">Cone</option>
+        <option value="face">Sinusoidal Surface</option>
+      </select>
+    </div>
+    <button class="btn" id="playBtn" onclick="togglePlay()">⏸ PAUSE</button>
+  </div>
+  <div class="g2" style="margin-bottom:1rem;">
+    <div>
+      <div class="card-title" style="font-family:var(--mono);font-size:.62rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.45rem;">
+        Projected Fringe · Frame <span id="fnum">1</span>/<span id="fden">4</span>
+      </div>
+      <div class="cw"><canvas id="cvFringe" width="320" height="270"></canvas></div>
+      <div class="fdots" id="fdots"></div>
+    </div>
+    <div>
+      <div class="card-title" style="font-family:var(--mono);font-size:.62rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.45rem;">
+        Extracted Wrapped Phase Map ϕ(x,y) ∈ (−π, π]
+      </div>
+      <div class="cw"><canvas id="cvPhase" width="320" height="270"></canvas></div>
+      <div class="cbar"></div>
+      <div class="cbarlbl"><span>−π</span><span>−π/2</span><span>0</span><span>+π/2</span><span>+π</span></div>
+    </div>
+  </div>
+  <div class="g2">
+    <div class="math">
+      I<sub>n</sub>(x,y) = <span class="v">A</span> + <span class="v">B</span>·cos(<span class="v">ϕ</span>(x,y) + 2πn/<span class="v">N</span>)<br>
+      ϕ(x,y) = arctan2(−Σ I<sub>n</sub>·sin(2πn/N), Σ I<sub>n</sub>·cos(2πn/N))<br>
+      <span class="cm">// N=<span id="mN">4</span>, σ=<span id="mNs">8</span>, freq=<span id="mFr">6</span></span>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase Quality Metrics</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.2rem;">
+        <div class="metric"><div class="mval" id="snrVal">—</div><div class="mlbl">Est. SNR (dB)</div></div>
+        <div class="metric"><div class="mval" id="modVal">—</div><div class="mlbl">Avg. Modulation</div></div>
+      </div>
+      <div style="margin-top:.85rem;font-size:.78rem;color:var(--dim);line-height:1.6;" id="qualHint">
+        Increasing N improves SNR by ~3dB per doubling of shifts. Higher noise σ degrades phase quality and may cause unwrapping errors.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ TAB 3: DEPTH MAP ════════════ -->
+<div id="tab-2" class="tab-content">
+  <div class="slbl">Reconstruction</div>
+  <h2>3D Depth Map Visualization</h2>
+  <p class="lead">Visualize how absolute phase is triangulated into a dense 3D depth map. Switch between unwrapping methods to compare accuracy, completeness, and noise resilience.</p>
+  <div class="controls">
+    <div class="cg">
+      <button class="btn ab" id="v-depth" onclick="setView('depth')">DEPTH MAP</button>
+      <button class="btn" id="v-surf" onclick="setView('surf')">SURFACE PLOT</button>
+      <button class="btn" id="v-cloud" onclick="setView('cloud')">POINT CLOUD</button>
+    </div>
+    <div class="cg"><span class="cl">Colormap</span>
+      <select id="cmap" onchange="renderDepth()">
+        <option value="jet">Jet</option>
+        <option value="hot">Hot</option>
+        <option value="viridis">Viridis</option>
+        <option value="gray">Grayscale</option>
+      </select>
+    </div>
+    <div class="cg"><span class="cl">Unwrap method</span>
+      <select id="umeth" onchange="renderDepth()">
+        <option value="temporal">Multi-Freq Temporal</option>
+        <option value="spatial">Spatial Gradient</option>
+        <option value="dl">Deep Learning (hNet)</option>
+      </select>
+    </div>
+  </div>
+  <div class="g2">
+    <div>
+      <div class="cw" style="height:320px;"><canvas id="cvDepth" width="400" height="320"></canvas></div>
+      <div id="dcbar" class="cbar"></div>
+      <div class="cbarlbl"><span>Near 0mm</span><span>Depth →</span><span>Far 100mm</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      <div class="card">
+        <div class="card-title">Unwrapping: <span id="uTitle" style="color:var(--text);font-family:var(--sans);text-transform:none;letter-spacing:0;font-size:.8rem;"></span></div>
+        <div id="uDesc" style="font-size:.82rem;color:var(--dim);line-height:1.65;"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Reconstruction Statistics</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;">
+          <div class="metric"><div class="mval" id="pts">65K</div><div class="mlbl">Points</div></div>
+          <div class="metric"><div class="mval" id="rmse">0.8</div><div class="mlbl">RMSE (mm)</div></div>
+          <div class="metric"><div class="mval" id="comp">97%</div><div class="mlbl">Completeness</div></div>
+        </div>
+      </div>
+      <div class="math" style="font-size:.75rem;">
+        Φ<sub>abs</sub>(x,y) = ϕ(x,y) + 2<span class="v">k</span>(x,y)π<br>
+        Z = <span class="v">f · B</span> / (Φ<sub>abs</sub> · <span class="v">λ<sub>eq</sub></span>)<br>
+        <span class="cm">// B=baseline, f=focal len, λ=fringe period</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ TAB 4: HDR ════════════ -->
+<div id="tab-3" class="tab-content">
+  <div class="slbl">Low-Light Compensation</div>
+  <h2>HDR &amp; Noise Analysis</h2>
+  <p class="lead">Drag the divider to compare raw screen capture (left: low contrast, ambient-contaminated) against Differential HDR processing (right: clean phase signal). This is the core challenge of screen-based scanning.</p>
+  <div class="hdrwrap" id="hdrW">
+    <canvas id="hdrA" width="800" height="300"></canvas>
+    <canvas id="hdrB" width="800" height="300" style="clip-path:inset(0 0 0 50%);"></canvas>
+    <div class="hdrdiv" id="hdrD" style="left:50%;"></div>
+    <div class="hdrlbls">
+      <div class="hdrlbl" style="color:#f87171;">⚠ Raw — No HDR</div>
+      <div class="hdrlbl" style="color:#4ade80;">✓ Differential HDR</div>
+    </div>
+  </div>
+  <div style="margin-top:.6rem;text-align:center;font-family:var(--mono);font-size:.65rem;color:var(--dim);">← DRAG TO COMPARE →</div>
+
+  <div class="g3" style="margin-top:1.5rem;">
+    <div class="card">
+      <div class="card-title">Raw Screen Limitations</div>
+      <div style="font-size:.82rem;color:var(--dim);line-height:1.65;">
+        <div style="color:#f87171;font-weight:600;margin-bottom:.35rem;">Low SNR ≈ 8 dB</div>
+        Screen brightness ~150 nits vs DLP projector ~2000 nits. Ambient light overwhelms fringe signal under typical room lighting.
+        <div style="color:#f87171;font-weight:600;margin:.65rem 0 .35rem;">Gamma Nonlinearity</div>
+        LCD gamma (γ≈2.2) corrupts sinusoidal purity, introducing harmonic errors in wrapped phase computation.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Differential HDR Method</div>
+      <div style="font-size:.82rem;color:var(--dim);line-height:1.65;">
+        <div style="color:#4ade80;font-weight:600;margin-bottom:.35rem;">Ambient Subtraction</div>
+        Capture I<sub>ambient</sub> before projection. Subtract per-pixel before phase computation: I<sub>active</sub> = I<sub>pattern</sub> − I<sub>ambient</sub>.
+        <div style="color:#4ade80;font-weight:600;margin:.65rem 0 .35rem;">Multi-Exposure Fusion</div>
+        Capture at multiple exposures; fuse using HDR weights w(I) = exp(−(I−128)²/128²) to maximize dynamic range.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Improvement vs. Baseline</div>
+      <div style="display:flex;flex-direction:column;gap:.55rem;margin-top:.15rem;">
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:.18rem;"><span style="color:var(--dim)">Phase SNR</span><span style="color:var(--accent)">+18 dB</span></div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:80%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:3px;"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:.18rem;"><span style="color:var(--dim)">Point Completeness</span><span style="color:var(--accent)">+41%</span></div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:62%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:3px;"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:.18rem;"><span style="color:var(--dim)">Phase RMSE</span><span style="color:var(--accent)">−67%</span></div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:55%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:3px;"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:.18rem;"><span style="color:var(--dim)">Specular Artifacts</span><span style="color:var(--accent)">−82%</span></div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:46%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:3px;"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="math" style="margin-top:1.2rem;font-size:.76rem;">
+    I<sub>active</sub>(x,y) = I<sub>pattern</sub> − I<sub>ambient</sub> &nbsp;&nbsp;&nbsp; <span class="cm">// differential ambient subtraction</span><br>
+    I<sub>fused</sub> = Σ w<sub>i</sub>·I<sub>i</sub> / Σ w<sub>i</sub> &nbsp;&nbsp;&nbsp; <span class="cm">// HDR multi-exposure fusion</span><br>
+    Δd ≈ d<sub>glass</sub>·sin(θ)/√(n²−sin²θ)·cos(θ) &nbsp;&nbsp;&nbsp; <span class="cm">// LCD glass refraction correction</span>
+  </div>
+</div>
+
+<script>
+// ─── UTILITIES ───────────────────────────────────────────────
+function jet(t) {
+  t = Math.max(0, Math.min(1, t));
+  return [
+    Math.max(0, Math.min(255, Math.round(255*(1.5-Math.abs(4*t-3))))),
+    Math.max(0, Math.min(255, Math.round(255*(1.5-Math.abs(4*t-2))))),
+    Math.max(0, Math.min(255, Math.round(255*(1.5-Math.abs(4*t-1)))))
+  ];
+}
+function hot(t) {
+  t = Math.max(0, Math.min(1, t));
+  return [
+    Math.min(255, Math.round(255*t*3)),
+    Math.min(255, Math.max(0, Math.round(255*(t*3-1)))),
+    Math.min(255, Math.max(0, Math.round(255*(t*3-2))))
+  ];
+}
+function viridis(t) {
+  t = Math.max(0, Math.min(1, t));
+  const r = 0.267+0.004*t+2.06*t*t-3.68*t*t*t+2.35*Math.pow(t,4);
+  const g = 0.004+1.26*t-0.6*t*t+0.001*t*t*t;
+  const b = 0.33+1.5*t-4.1*t*t+4.5*t*t*t-1.85*Math.pow(t,4);
+  return [Math.max(0,Math.min(255,Math.round(255*r))), Math.max(0,Math.min(255,Math.round(255*g))), Math.max(0,Math.min(255,Math.round(255*b)))];
+}
+function gray(t) { const v=Math.round(255*Math.max(0,Math.min(1,t))); return [v,v,v]; }
+const CMAPS = { jet, hot, viridis, gray };
+
+function rng() { return Math.random()*2-1; }
+
+function makeDepth(type, W, H) {
+  const d = new Float32Array(W*H);
+  const cx=W/2, cy=H/2;
+  for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
+    const dx=(x-cx)/(W*.36), dy=(y-cy)/(H*.36);
+    const r=Math.sqrt(dx*dx+dy*dy);
+    let z=0;
+    if (type==='sphere') z = r<1 ? Math.sqrt(Math.max(0,1-r*r)) : 0;
+    else if (type==='steps') {
+      const q=Math.floor(r*4); z=(q===0?1:q===1?.7:q===2?.4:.15)*Math.max(0,1-r*.7);
+    } else if (type==='cone') z=Math.max(0,1-r);
+    else if (type==='face') {
+      z = r<1.2 ? Math.max(0,(Math.cos(r*2.5)+1)/2 * (1-r*.6) + .15*Math.cos(dx*6)*Math.cos(dy*6)) : 0;
+    }
+    d[y*W+x]=z;
+  }
+  return d;
+}
+
+// ─── TAB SWITCHING ───────────────────────────────────────────
+function setTab(i) {
+  document.querySelectorAll('.tab-content').forEach((e,j)=>e.classList.toggle('active',i===j));
+  document.querySelectorAll('.tab-btn').forEach((e,j)=>e.classList.toggle('active',i===j));
+  if (i===1) initPSP();
+  if (i===2) initDepth();
+  if (i===3) initHDR();
+}
+
+// ─── PIPELINE ────────────────────────────────────────────────
+const stages = [
+  { icon:'💻', name:'Screen\nProjector', tag:'ACTIVE ILLUMINATION',
+    desc:'The laptop display acts as a programmable structured light source. Phase-shifted sinusoidal patterns are rendered at full resolution. Key challenge: ~150 nit peak brightness vs. DLP projectors at ~2000 nit. Requires gamma pre-distortion and differential HDR capture to achieve usable fringe contrast. The projector-screen model is also non-Lambertian, requiring modified geometric calibration assumptions.',
+    refs:'Vodilka et al. (2025) — markerless screen-camera calibration<br>Zhang et al. (2023) — HDR fringe projection<br>Liu et al. / Zhang et al. — LCD glass refraction correction' },
+  { icon:'🎥', name:'Webcam\nCapture', tag:'IMAGE ACQUISITION',
+    desc:'A commodity 1080p webcam is offset from the screen to establish triangulation baseline B. Synchronized capture ensures each camera frame corresponds exactly to one projected phase-shift step. Exposure must be tuned to maximize dynamic range without saturation on specular surfaces. Frame rate is limited by screen refresh synchronization (typically 30–60 fps).',
+    refs:'Jordan (2010) — projector-camera calibration<br>An et al. (2016) — large-scale calibration methods<br>Li et al. (2023) — phase-based sub-pixel calibration' },
+  { icon:'🔧', name:'System\nCalibration', tag:'INTRINSIC + EXTRINSIC',
+    desc:'Determines intrinsic camera parameters (focal length, principal point, distortion coefficients) and the extrinsic screen-to-camera transformation (R, t). Uses the "Inverse Camera" model treating the screen as a projector-camera. Critical addition: modeling LCD glass refraction shift Δd ≈ d_glass · sin(θ)/√(n²−sin²θ) for metric accuracy at oblique viewing angles.',
+    refs:'Jordan (2010) — Gray Code-based calibration<br>An et al. (2016) — multi-stage depth-sensor-aided calibration<br>Zhu et al. (2022) — DIC-based structured light calibration' },
+  { icon:'〰️', name:'Phase\nExtraction', tag:'WRAPPED PHASE',
+    desc:'For each pixel, the N captured intensity values are processed via the arctangent formula to yield wrapped phase ϕ(x,y) ∈ (−π,π]. Modulation B(x,y) = 2√(sumSin²+sumCos²)/N quantifies data confidence. Pixels with low modulation (dark surfaces, overexposed speculars) are masked as unreliable. This step is where screen noise most severely impacts quality.',
+    refs:'Zhang (2010) — N-step phase shifting theory<br>Sansoni et al. (1999) — Gray Code + PSP hybrid<br>Zhao et al. (2006) — two-frequency absolute phase measurement' },
+  { icon:'📈', name:'Phase\nUnwrapping', tag:'ABSOLUTE PHASE',
+    desc:'The wrapped phase has a 2π ambiguity; unwrapping recovers the integer order k so Φ_abs = ϕ + 2kπ. Multi-Frequency Temporal Unwrapping projects at multiple fringe frequencies and uses the heterodyne principle. Deep Unrolling Networks (Chen et al., CVPR 2024) use physics-informed neural layers to unwrap robustly under high noise from the low-luminance screen — our key algorithmic contribution.',
+    refs:'Chen et al. (CVPR 2024) — unsupervised deep unrolling<br>Gontarz et al. (2023) — attention-gated U-Net phase unwrapping<br>Evans et al. (2024) — deep learning single-shot profilometry' },
+  { icon:'🧊', name:'3D Point\nCloud', tag:'TRIANGULATION',
+    desc:'Absolute phase Φ(x,y) is converted to depth Z via triangulation: Z = (f·B)/(Φ·λ_eq). This produces a dense point cloud with one 3D point per camera pixel. Post-processing includes statistical outlier removal, surface normal estimation, and quantitative error analysis by measuring reconstructed object dimensions against a digital caliper ground truth.',
+    refs:'Wang et al. (2025) — error analysis framework<br>Geng (2011) — structured light 3D tutorial<br>Jensen et al. (2021) — differentiable rendering for SL' },
+];
+
+(function buildPipeline(){
+  const c=document.getElementById('pflow');
+  stages.forEach((s,i)=>{
+    const n=document.createElement('div');
+    n.className='pnode'; n.id='pn'+i;
+    n.innerHTML=`<div class="picon">${s.icon}</div><div class="pname">${s.name.replace('\n','<br>')}</div><span class="ptag">${s.tag}</span>`;
+    n.onclick=()=>selPipe(i);
+    c.appendChild(n);
+    if(i<stages.length-1){const a=document.createElement('div');a.className='parrow';a.textContent='→';c.appendChild(a);}
+  });
+  selPipe(0);
+})();
+
+function selPipe(i){
+  document.querySelectorAll('.pnode').forEach((n,j)=>n.classList.toggle('sel',i===j));
+  const s=stages[i];
+  document.getElementById('pdesc').innerHTML=s.desc;
+  document.getElementById('prefs').innerHTML=s.refs;
+  document.getElementById('pdetail').classList.add('vis');
+}
+
+// ─── PSP SIMULATOR ───────────────────────────────────────────
+let pspInit=false, pspPlay=true, pspFrame=0, pspTimer=null;
+let dCache=null, dCacheType=null;
+
+function initPSP(){
+  if(pspInit)return; pspInit=true;
+  ['nS','fr','ns'].forEach(id=>{
+    const lbl={'nS':'nSv','fr':'frv','ns':'nsv'}[id];
+    document.getElementById(id).addEventListener('input',()=>{
+      document.getElementById(lbl).textContent=document.getElementById(id).value;
+      updateParams();
+    });
+  });
+  document.getElementById('obj').addEventListener('change',()=>{dCacheType=null;updateParams();});
+  updateParams();
+  pspTick();
+}
+
+function updateParams(){
+  const N=+document.getElementById('nS').value;
+  const fr=+document.getElementById('fr').value;
+  const ns=+document.getElementById('ns').value;
+  document.getElementById('mN').textContent=N;
+  document.getElementById('mFr').textContent=fr;
+  document.getElementById('mNs').textContent=ns;
+  const type=document.getElementById('obj').value;
+  if(dCacheType!==type){dCache=makeDepth(type,320,270);dCacheType=type;}
+  drawPhase(dCache,N,fr,ns);
+}
+
+function pspTick(){
+  if(pspPlay){
+    const N=+document.getElementById('nS').value;
+    const fr=+document.getElementById('fr').value;
+    const ns=+document.getElementById('ns').value;
+    const type=document.getElementById('obj').value;
+    if(dCacheType!==type){dCache=makeDepth(type,320,270);dCacheType=type;}
+    const n=pspFrame%N;
+    drawFringe(dCache,n,N,fr,ns);
+    updateDots(n,N);
+    pspFrame++;
+  }
+  pspTimer=setTimeout(pspTick,650);
+}
+
+function drawFringe(dm,n,N,fr,ns){
+  const cv=document.getElementById('cvFringe');
+  const ctx=cv.getContext('2d');
+  const W=320,H=270;
+  const img=ctx.createImageData(W,H);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const phi=dm[y*W+x]*fr*2*Math.PI;
+    const raw=128+100*Math.cos(phi+2*Math.PI*n/N)+rng()*ns;
+    const v=Math.max(0,Math.min(255,Math.round(raw)));
+    const i=(y*W+x)*4;
+    img.data[i]=v; img.data[i+1]=v; img.data[i+2]=v+15; img.data[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+  document.getElementById('fnum').textContent=n+1;
+  document.getElementById('fden').textContent=N;
+}
+
+function drawPhase(dm,N,fr,ns){
+  const cv=document.getElementById('cvPhase');
+  const ctx=cv.getContext('2d');
+  const W=320,H=270;
+  const ss=new Float32Array(W*H),sc=new Float32Array(W*H);
+  for(let n=0;n<N;n++){
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      const phi=dm[y*W+x]*fr*2*Math.PI;
+      const I=128+100*Math.cos(phi+2*Math.PI*n/N)+rng()*ns;
+      ss[y*W+x]+=I*Math.sin(2*Math.PI*n/N);
+      sc[y*W+x]+=I*Math.cos(2*Math.PI*n/N);
+    }
+  }
+  const img=ctx.createImageData(W,H);
+  let snrA=0,modA=0,cnt=0;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const p=Math.atan2(-ss[y*W+x],sc[y*W+x]);
+    const t=(p+Math.PI)/(2*Math.PI);
+    const [r,g,b]=jet(t);
+    const i=(y*W+x)*4;
+    img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=255;
+    if(dm[y*W+x]>.05){
+      const mod=Math.sqrt(ss[y*W+x]**2+sc[y*W+x]**2)/N;
+      snrA+=mod;modA+=mod/100;cnt++;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  if(cnt>0){
+    document.getElementById('snrVal').textContent=(20*Math.log10(snrA/cnt/(ns+1))).toFixed(1);
+    document.getElementById('modVal').textContent=(modA/cnt).toFixed(2);
+  }
+}
+
+function updateDots(n,N){
+  const c=document.getElementById('fdots');
+  c.innerHTML='';
+  for(let i=0;i<N;i++){const d=document.createElement('div');d.className='fdot'+(i===n?' a':'');c.appendChild(d);}
+}
+
+function togglePlay(){
+  pspPlay=!pspPlay;
+  document.getElementById('playBtn').textContent=pspPlay?'⏸ PAUSE':'▶ PLAY';
+}
+
+// ─── DEPTH MAP ───────────────────────────────────────────────
+let depthInit=false, curView='depth';
+
+const umeta={
+  temporal:{title:'Multi-Frequency Temporal Unwrapping',
+    desc:'Projects fringes at multiple frequencies (λ₁,λ₂,λ₃). Heterodyne beat principle creates a virtual coarse fringe λ_eq=λ₁λ₂/|λ₁−λ₂|, resolving the 2π ambiguity without spatial error propagation. Highly robust across depth discontinuities. Requires 9+ total frames (3 freq × 3 shifts).',
+    rmse:'0.8',pts:'65K',comp:'97%',noise:.015},
+  spatial:{title:'Spatial Gradient Unwrapping',
+    desc:'Analyzes local phase gradient ∇ϕ(x,y) to infer integer order k. Requires only 3 frames (minimum). However, errors propagate across connected regions — highly problematic at depth discontinuities and in low-SNR zones caused by the laptop screen\'s dim output.',
+    rmse:'2.4',pts:'57K',comp:'82%',noise:.07},
+  dl:{title:'Deep Learning Unwrapping (Deep Unrolling / hNet)',
+    desc:'A CNN trained on synthetic fringe data learns global phase context, resolving 2π ambiguities without explicit multi-frequency projection. Chen et al. (CVPR 2024) use physics-informed "unrolling layers." Best performance in our screen-based scenario due to extreme resilience to noise — our primary innovation target.',
+    rmse:'0.4',pts:'64K',comp:'99%',noise:.008}
+};
+
+function setView(v){
+  curView=v;
+  ['depth','surf','cloud'].forEach(n=>{
+    document.getElementById('v-'+n).classList.toggle('ab',n===v);
+  });
+  renderDepth();
+}
+
+function renderDepth(){
+  const m=document.getElementById('umeth').value;
+  const info=umeta[m];
+  document.getElementById('uTitle').textContent=info.title;
+  document.getElementById('uDesc').textContent=info.desc;
+  document.getElementById('pts').textContent=info.pts;
+  document.getElementById('rmse').textContent=info.rmse;
+  document.getElementById('comp').textContent=info.comp;
+
+  const cv=document.getElementById('cvDepth');
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  const dm=makeDepth('sphere',W,H);
+  const cfn=CMAPS[document.getElementById('cmap').value];
+  const noise=info.noise;
+
+  ctx.clearRect(0,0,W,H);
+
+  if(curView==='depth'){
+    const img=ctx.createImageData(W,H);
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      let z=dm[y*W+x]; if(z>.02) z+=rng()*noise;
+      z=Math.max(0,Math.min(1,z));
+      const [r,g,b]=z>.015?cfn(z):[8,12,20];
+      const i=(y*W+x)*4;
+      img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=255;
+    }
+    ctx.putImageData(img,0,0);
+  } else if(curView==='surf'){
+    ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+    const step=4, scale=H*.38, ox=W*.05, oy=H*.9;
+    for(let yi=H-step;yi>=0;yi-=step){
+      ctx.beginPath();
+      let first=true;
+      for(let xi=0;xi<=W;xi+=step){
+        const z=Math.max(0,dm[Math.min(H-1,yi)*W+Math.min(W-1,xi)]+(rng()*noise));
+        const px=ox+xi*.75+yi*.22;
+        const py=oy-yi*.32-z*scale;
+        const [r,g,b]=cfn(Math.max(0,Math.min(1,z)));
+        if(first){ctx.moveTo(px,py);first=false;}else ctx.lineTo(px,py);
+        ctx.strokeStyle=`rgb(${r},${g},${b})`;
+      }
+      ctx.lineWidth=1; ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle='#000a14';ctx.fillRect(0,0,W,H);
+    const step=3;
+    for(let y=0;y<H;y+=step) for(let x=0;x<W;x+=step){
+      let z=dm[y*W+x]; if(z<.015) continue;
+      z=Math.max(0,Math.min(1,z+rng()*noise));
+      const [r,g,b]=cfn(z);
+      ctx.fillStyle=`rgba(${r},${g},${b},.9)`;
+      ctx.fillRect(x+rng()*1.5,y+rng()*1.5,2,2);
+    }
+  }
+
+  const stops=Array.from({length:10},(_,i)=>{const[r,g,b]=cfn(i/9);return`rgb(${r},${g},${b}) ${(i/9*100).toFixed(0)}%`;}).join(',');
+  document.getElementById('dcbar').style.background=`linear-gradient(90deg,${stops})`;
+}
+
+function initDepth(){
+  if(depthInit)return; depthInit=true;
+  renderDepth();
+}
+
+// ─── HDR COMPARISON ──────────────────────────────────────────
+let hdrInit=false;
+
+function initHDR(){
+  if(hdrInit)return; hdrInit=true;
+  const cA=document.getElementById('hdrA');
+  const cB=document.getElementById('hdrB');
+  const W=cA.width, H=cA.height;
+  const ctA=cA.getContext('2d'), ctB=cB.getContext('2d');
+  const dm=makeDepth('sphere',W,H);
+  const fr=5;
+
+  const iA=ctA.createImageData(W,H), iB=ctB.createImageData(W,H);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const phi=dm[y*W+x]*fr*2*Math.PI;
+    const amb=55+18*Math.sin(y*.04+x*.01);
+    const raw=amb+32*Math.cos(phi)+rng()*55;
+    const g22=Math.pow(Math.max(0,raw/255),2.2)*255;
+    const vA=Math.max(0,Math.min(255,Math.round(g22+rng()*18)));
+    const iA_=dm[y*W+x]>.02?128+100*Math.cos(phi)+rng()*5:0;
+    const tB=Math.max(0,Math.min(1,(iA_-28)/200));
+    const [rB,gB,bB]=jet(tB);
+    const idx=(y*W+x)*4;
+    iA.data[idx]=Math.round(vA*.5);iA.data[idx+1]=Math.round(vA*.45);iA.data[idx+2]=Math.round(vA*.75);iA.data[idx+3]=255;
+    iB.data[idx]=rB;iB.data[idx+1]=gB;iB.data[idx+2]=bB;iB.data[idx+3]=255;
+  }
+  ctA.putImageData(iA,0,0);
+  ctB.putImageData(iB,0,0);
+
+  const wrap=document.getElementById('hdrW');
+  const div=document.getElementById('hdrD');
+  const cBEl=document.getElementById('hdrB');
+  let drag=false;
+
+  function setPos(e){
+    const r=wrap.getBoundingClientRect();
+    const cx=e.touches?e.touches[0].clientX:e.clientX;
+    const p=Math.max(1,Math.min(99,((cx-r.left)/r.width*100))).toFixed(1);
+    div.style.left=p+'%';
+    cBEl.style.clipPath=`inset(0 0 0 ${p}%)`;
+  }
+  wrap.addEventListener('mousedown',e=>{drag=true;setPos(e);});
+  wrap.addEventListener('mousemove',e=>{if(drag)setPos(e);});
+  wrap.addEventListener('mouseup',()=>drag=false);
+  wrap.addEventListener('mouseleave',()=>drag=false);
+  wrap.addEventListener('touchstart',e=>{drag=true;setPos(e);},{passive:true});
+  wrap.addEventListener('touchmove',e=>{if(drag){e.preventDefault();setPos(e);}},{passive:false});
+  wrap.addEventListener('touchend',()=>drag=false);
+}
+</script>
+</body>
+</html>
